@@ -14,6 +14,11 @@ import tempfile
 import time
 from pathlib import Path
 
+if os.environ.get("FLAT_TEST_SITE"):
+    import site
+
+    site.addsitedir(os.environ["FLAT_TEST_SITE"])
+
 import numpy as np
 from astropy.io import fits
 
@@ -72,18 +77,25 @@ def main() -> int:
         paths, raws, saturation = generate_frames(root / "data", n, height, width)
         print(f"[stress] 生成耗时 {time.perf_counter() - t0:.1f}s")
 
-        out_dir, work_dir = root / "products", root / "work"
+        out_dir = root / "products"
+        io_stats: dict[str, int] = {}
         t0 = time.perf_counter()
         product = build_master_flat(
             paths, [p.name for p in paths], saturation,
-            output_dir=out_dir, work_dir=work_dir,
+            output_dir=out_dir, io_stats=io_stats,
         )
         elapsed = time.perf_counter() - t0
+        read_multiples = (
+            io_stats["max_pixel_bytes_read"] / io_stats["pixel_bytes_per_frame"]
+        )
         # 注意：本进程同时持有全部输入整数数组与后续参考实现，
         # 因此这里的 RSS 不是管线的真实预算占用；
         # 管线纯净峰值请用 measure_pipeline_only.py / matrix_sizes.py 测量。
         peak_mib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
-        print(f"[stress] 制备耗时 {elapsed:.1f}s（本进程含测试夹具，RSS {peak_mib:.1f} MiB 仅供参考）")
+        print(
+            f"[stress] 制备耗时 {elapsed:.1f}s（本进程含测试夹具，RSS {peak_mib:.1f} MiB 仅供参考；"
+            f"每帧暂存像元读取 {read_multiples:.2f} 倍）"
+        )
 
         with fits.open(product) as out:
             master, counts = np.asarray(out[0].data), np.asarray(out[1].data)

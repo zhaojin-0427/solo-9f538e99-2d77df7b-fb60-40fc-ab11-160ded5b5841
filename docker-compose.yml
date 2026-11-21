@@ -5,13 +5,14 @@ services:
     container_name: master-flat
     ports:
       - "8000:8000"
-    # 单次制备须在 256 MiB 内存内完成：硬性限制 + 预留余量的告警线。
+    # 单次制备须在 256 MiB 内存内完成：硬性限制 + 等量 swap 上限（禁止换出扩容）。
     mem_limit: 256m
     mem_reservation: 256m
     memswap_limit: 256m
     volumes:
-      - flat_products:/data/products
-      - flat_work:/data/work
+      # 成品与输入暂存共用同一卷：每帧在盘上至多一份，成品临时文件
+      # 同卷原子改名，不产生跨卷复制。
+      - flat_data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
@@ -20,5 +21,4 @@ services:
       retries: 3
 
 volumes:
-  flat_products:
-  flat_work:
+  flat_data:

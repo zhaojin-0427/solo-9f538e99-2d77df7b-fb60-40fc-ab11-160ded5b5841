@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import os
 import resource
 import sys
 import tempfile
 from pathlib import Path
+
+# 本地环境把依赖装在独立目录；子进程用 -I 启动会忽略 PYTHONPATH，
+# 因此把该路径通过 -P 之外的 site.addsitedir 引导（见 _bootstrap 代码）。
+_EXTRA_SITE = os.environ.get("FLAT_TEST_SITE", "")
+if _EXTRA_SITE:
+    import site
+
+    site.addsitedir(_EXTRA_SITE)
 
 import numpy as np
 from astropy.io import fits
@@ -73,7 +82,7 @@ def run_one(case, root: Path):
     paths = sorted(root.glob("f*.fits"))
     product = build_master_flat(
         paths, [p.name for p in paths], sat,
-        output_dir=root / "out", work_dir=root / "work",
+        output_dir=root / "out",
     )
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     with fits.open(product) as out:
@@ -108,12 +117,13 @@ def main():
         raise SystemExit(0 if (shape_ok and range_ok and ext_ok) else 1)
 
     import subprocess
+    env = dict(os.environ)
     failures = 0
     for idx, (n, h, w) in enumerate(CASES):
         root = Path(tempfile.mkdtemp(prefix=f"matrix_{n}_{h}_{w}_"))
         gen = subprocess.run(
             [sys.executable, "-I", __file__, "gen", str(idx), str(root)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=env,
         )
         if gen.returncode != 0:
             print(f"n={n:2d} {w:4d}x{h:4d} GEN FAILED\n{gen.stderr[-500:]}")
@@ -121,7 +131,7 @@ def main():
             continue
         proc = subprocess.run(
             [sys.executable, "-I", __file__, "run", str(idx), str(root)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=env,
         )
         if proc.returncode != 0:
             print(f"n={n:2d} {w:4d}x{h:4d} RUN FAILED\n{proc.stderr[-500:]}")

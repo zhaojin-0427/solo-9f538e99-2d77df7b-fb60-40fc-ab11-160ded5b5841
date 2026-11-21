@@ -7,3 +7,5 @@ work/
 products/
 data/
 *.tmp
+# 本地无 pip 环境下引导安装的依赖与测试运行器（非项目交付物）
+tools/
